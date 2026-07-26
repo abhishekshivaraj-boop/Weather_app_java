@@ -108,7 +108,7 @@
             <div class="detail-item">Feels like<strong><%= String.format("%.1f", weather.getFeelsLike()) %>°C</strong></div>
             <div class="detail-item">Humidity<strong><%= weather.getHumidity() %>%</strong></div>
             <div class="detail-item">Wind Speed<strong><%= String.format("%.1f", weather.getWindSpeed()) %> km/h</strong></div>
-            <div class="detail-item">Sunrise / Sunset<strong><%= weather.getSunrise().substring(11) %> / <%= weather.getSunset().substring(11) %></strong></div>
+          <div class="detail-item">Sunrise / Sunset<strong><%= weather.getSunrise() %> / <%= weather.getSunset() %></strong></div>
         </div>
 
         <div class="forecast-title">5-Day Forecast</div>

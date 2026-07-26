@@ -35,10 +35,10 @@ public class WeatherServlet extends HttpServlet {
             request.getRequestDispatcher("/views/weather.jsp").forward(request, response);
 
         } catch (Exception e) {
-           String errorMsg = e.getMessage();
-if (errorMsg != null && errorMsg.contains("429")) {
-    request.setAttribute("error", "Weather service is temporarily busy. Please try again in a minute.");
-} else {
+            String errorMsg = e.getMessage();
+            if (errorMsg != null && errorMsg.contains("429")) {
+                request.setAttribute("error", "Weather service is temporarily busy. Please try again in a minute.");
+           }  else {
     request.setAttribute("error", "Could not find weather for that city. Please check the spelling and try again.");
 }
             request.getRequestDispatcher("/views/index.jsp").forward(request, response);

@@ -14,80 +14,140 @@ import java.net.URI;
 import java.net.URL;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public class WeatherService {
 
-    // Step 1: Convert city name to coordinates
+    private String getApiKey() throws Exception {
+        String key = System.getenv("OPENWEATHER_API_KEY");
+        if (key == null || key.isEmpty()) {
+            throw new Exception("API key not configured");
+        }
+        return key;
+    }
+
+    // Step 1: Convert city name to coordinates using OpenWeatherMap Geocoding API
     public GeoLocation getCoordinates(String cityName) throws Exception {
+        String apiKey = getApiKey();
         String encodedCity = URLEncoder.encode(cityName, StandardCharsets.UTF_8);
-        String urlString = "https://geocoding-api.open-meteo.com/v1/search?name=" 
-                            + encodedCity + "&count=1&language=en&format=json";
+        String urlString = "https://api.openweathermap.org/geo/1.0/direct?q="
+                + encodedCity + "&limit=1&appid=" + apiKey;
 
         String response = makeApiCall(urlString);
+        JsonArray results = JsonParser.parseString(response).getAsJsonArray();
 
-        JsonObject json = JsonParser.parseString(response).getAsJsonObject();
-
-        if (!json.has("results")) {
+        if (results.size() == 0) {
             throw new Exception("City not found: " + cityName);
         }
 
-        JsonArray results = json.getAsJsonArray("results");
         JsonObject firstResult = results.get(0).getAsJsonObject();
-
-        double lat = firstResult.get("latitude").getAsDouble();
-        double lon = firstResult.get("longitude").getAsDouble();
+        double lat = firstResult.get("lat").getAsDouble();
+        double lon = firstResult.get("lon").getAsDouble();
         String name = firstResult.get("name").getAsString();
         String country = firstResult.has("country") ? firstResult.get("country").getAsString() : "";
 
         return new GeoLocation(lat, lon, name, country);
     }
 
-    // Step 2: Get current weather + forecast using coordinates
+    // Step 2: Get current weather + forecast using OpenWeatherMap
     public WeatherData getCurrentWeather(GeoLocation location) throws Exception {
-        String urlString = "https://api.open-meteo.com/v1/forecast?latitude="
-                + location.getLatitude() + "&longitude=" + location.getLongitude()
-                + "&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m"
-                + "&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset"
-                + "&timezone=auto";
+        String apiKey = getApiKey();
 
-        String response = makeApiCall(urlString);
+        // Current weather
+        String currentUrl = "https://api.openweathermap.org/data/2.5/weather?lat="
+                + location.getLatitude() + "&lon=" + location.getLongitude()
+                + "&units=metric&appid=" + apiKey;
 
-        JsonObject json = JsonParser.parseString(response).getAsJsonObject();
-        JsonObject current = json.getAsJsonObject("current");
-        JsonObject daily = json.getAsJsonObject("daily");
+        String currentResponse = makeApiCall(currentUrl);
+        JsonObject currentJson = JsonParser.parseString(currentResponse).getAsJsonObject();
 
-        double temperature = current.get("temperature_2m").getAsDouble();
-        double feelsLike = current.get("apparent_temperature").getAsDouble();
-        int humidity = current.get("relative_humidity_2m").getAsInt();
-        double windSpeed = current.get("wind_speed_10m").getAsDouble();
-        int weatherCode = current.get("weather_code").getAsInt();
-        String description = getWeatherDescription(weatherCode);
+        JsonObject main = currentJson.getAsJsonObject("main");
+        double temperature = main.get("temp").getAsDouble();
+        double feelsLike = main.get("feels_like").getAsDouble();
+        int humidity = main.get("humidity").getAsInt();
 
-        // Sunrise/sunset for today (first entry in daily arrays)
-        String sunrise = daily.getAsJsonArray("sunrise").get(0).getAsString();
-        String sunset = daily.getAsJsonArray("sunset").get(0).getAsString();
+        JsonObject wind = currentJson.getAsJsonObject("wind");
+        double windSpeed = wind.get("speed").getAsDouble();
 
-        // Build 5-day forecast (skip today, index 0, take next days)
-        List<ForecastDay> forecast = new ArrayList<>();
-        JsonArray dates = daily.getAsJsonArray("time");
-        JsonArray maxTemps = daily.getAsJsonArray("temperature_2m_max");
-        JsonArray minTemps = daily.getAsJsonArray("temperature_2m_min");
-        JsonArray codes = daily.getAsJsonArray("weather_code");
+        JsonArray weatherArr = currentJson.getAsJsonArray("weather");
+        String description = weatherArr.get(0).getAsJsonObject().get("description").getAsString();
+        description = capitalize(description);
 
-        int daysToShow = Math.min(5, dates.size());
-        for (int i = 0; i < daysToShow; i++) {
-            String date = dates.get(i).getAsString();
-            double maxT = maxTemps.get(i).getAsDouble();
-            double minT = minTemps.get(i).getAsDouble();
-            int code = codes.get(i).getAsInt();
-            forecast.add(new ForecastDay(date, maxT, minT, getWeatherDescription(code)));
-        }
+        JsonObject sys = currentJson.getAsJsonObject("sys");
+        long sunriseUnix = sys.get("sunrise").getAsLong();
+        long sunsetUnix = sys.get("sunset").getAsLong();
+        String sunrise = formatTime(sunriseUnix);
+        String sunset = formatTime(sunsetUnix);
+
+        // 5-day forecast (uses the free /forecast endpoint, 3-hour intervals)
+        String forecastUrl = "https://api.openweathermap.org/data/2.5/forecast?lat="
+                + location.getLatitude() + "&lon=" + location.getLongitude()
+                + "&units=metric&appid=" + apiKey;
+
+        String forecastResponse = makeApiCall(forecastUrl);
+        JsonObject forecastJson = JsonParser.parseString(forecastResponse).getAsJsonObject();
+        JsonArray list = forecastJson.getAsJsonArray("list");
+
+        List<ForecastDay> forecast = buildDailyForecast(list);
 
         return new WeatherData(location.getLatitude(), location.getLongitude(),
                 location.getName(), temperature, feelsLike, humidity,
                 description, windSpeed, sunrise, sunset, forecast);
+    }
+
+    // Helper: Group 3-hour forecast entries into daily summaries (max 5 days)
+    private List<ForecastDay> buildDailyForecast(JsonArray list) {
+        Map<String, List<Double>> tempsByDate = new HashMap<>();
+        Map<String, String> descByDate = new HashMap<>();
+        List<String> orderedDates = new ArrayList<>();
+
+        SimpleDateFormat dateFmt = new SimpleDateFormat("yyyy-MM-dd");
+
+        for (int i = 0; i < list.size(); i++) {
+            JsonObject entry = list.get(i).getAsJsonObject();
+            long unixTime = entry.get("dt").getAsLong();
+            String date = dateFmt.format(new Date(unixTime * 1000));
+
+            double temp = entry.getAsJsonObject("main").get("temp").getAsDouble();
+
+            tempsByDate.computeIfAbsent(date, k -> {
+                orderedDates.add(date);
+                return new ArrayList<>();
+            }).add(temp);
+
+            if (!descByDate.containsKey(date)) {
+                String desc = entry.getAsJsonArray("weather").get(0).getAsJsonObject()
+                        .get("description").getAsString();
+                descByDate.put(date, capitalize(desc));
+            }
+        }
+
+        List<ForecastDay> result = new ArrayList<>();
+        int daysToShow = Math.min(5, orderedDates.size());
+        for (int i = 0; i < daysToShow; i++) {
+            String date = orderedDates.get(i);
+            List<Double> temps = tempsByDate.get(date);
+            double max = temps.stream().max(Double::compareTo).orElse(0.0);
+            double min = temps.stream().min(Double::compareTo).orElse(0.0);
+            result.add(new ForecastDay(date, max, min, descByDate.get(date)));
+        }
+
+        return result;
+    }
+
+    private String formatTime(long unixSeconds) {
+        SimpleDateFormat timeFmt = new SimpleDateFormat("HH:mm");
+        return timeFmt.format(new Date(unixSeconds * 1000));
+    }
+
+    private String capitalize(String text) {
+        if (text == null || text.isEmpty()) return text;
+        return text.substring(0, 1).toUpperCase() + text.substring(1);
     }
 
     // Helper: Make HTTP GET request
@@ -96,6 +156,17 @@ public class WeatherService {
         HttpURLConnection conn = (HttpURLConnection) url.openConnection();
         conn.setRequestMethod("GET");
         conn.setRequestProperty("User-Agent", "WeatherApp-Portfolio/1.0");
+
+        int responseCode = conn.getResponseCode();
+        if (responseCode == 404) {
+            throw new Exception("City not found");
+        }
+        if (responseCode == 401) {
+            throw new Exception("Invalid API key");
+        }
+        if (responseCode == 429) {
+            throw new Exception("429 rate limit");
+        }
 
         BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream()));
         StringBuilder response = new StringBuilder();
@@ -106,18 +177,6 @@ public class WeatherService {
         reader.close();
 
         return response.toString();
-    }
-
-    // Helper: Convert weather code to readable description
-    private String getWeatherDescription(int code) {
-        if (code == 0) return "Clear sky";
-        if (code <= 3) return "Partly cloudy";
-        if (code <= 48) return "Foggy";
-        if (code <= 67) return "Rainy";
-        if (code <= 77) return "Snowy";
-        if (code <= 82) return "Rain showers";
-        if (code <= 99) return "Thunderstorm";
-        return "Unknown";
     }
 }
 
