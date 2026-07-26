@@ -23,13 +23,18 @@ import java.util.Map;
 
 public class WeatherService {
 
-    private String getApiKey() throws Exception {
-        String key = System.getenv("OPENWEATHER_API_KEY");
-        if (key == null || key.isEmpty()) {
-            throw new Exception("API key not configured");
-        }
-        return key;
+  private String getApiKey() throws Exception {
+    String key = System.getenv("OPENWEATHER_API_KEY");
+    if (key == null || key.isEmpty()) {
+        // Workaround for a Render environment-variable injection issue:
+        // the value sometimes arrives under a generic "Value" variable instead.
+        key = System.getenv("Value");
     }
+    if (key == null || key.isEmpty()) {
+        throw new Exception("API key not configured");
+    }
+    return key;
+}
 
     // Step 1: Convert city name to coordinates using OpenWeatherMap Geocoding API
     public GeoLocation getCoordinates(String cityName) throws Exception {
