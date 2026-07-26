@@ -4,7 +4,7 @@
 
 A full-stack weather application built with core Java web technologies (no frameworks), demonstrating MVC architecture, REST API integration, and JSON parsing.
 
-**🔗 Live Demo:** https://weather-app-java-kulq.onrender.com/weatherapp/
+**🔗 Live Demo:** https://weather-app-java-m7k5.onrender.com/weatherapp/
 
 > Note: Hosted on a free-tier instance — may take 30-60 seconds to wake up if inactive, and the weather API occasionally rate-limits shared hosting IPs.
 
