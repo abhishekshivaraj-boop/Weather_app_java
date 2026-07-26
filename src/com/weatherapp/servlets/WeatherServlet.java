@@ -39,7 +39,7 @@ public class WeatherServlet extends HttpServlet {
             if (errorMsg != null && errorMsg.contains("429")) {
                 request.setAttribute("error", "Weather service is temporarily busy. Please try again in a minute.");
            }  else {
-    request.setAttribute("error", "Could not find weather for that city. Please check the spelling and try again.");
+    request.setAttribute("error", "DEBUG: " + e.getMessage());
 }
             request.getRequestDispatcher("/views/index.jsp").forward(request, response);
         }
