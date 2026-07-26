@@ -38,8 +38,11 @@ public class WeatherServlet extends HttpServlet {
             String errorMsg = e.getMessage();
             if (errorMsg != null && errorMsg.contains("429")) {
                 request.setAttribute("error", "Weather service is temporarily busy. Please try again in a minute.");
-           }  else {
-    request.setAttribute("error", "DEBUG: " + e.getMessage());
+           }   else {
+    String envCheck = System.getenv("OPENWEATHER_API_KEY");
+    String debugInfo = "DEBUG: " + e.getMessage() 
+        + " | envCheck=" + (envCheck == null ? "NULL" : "EXISTS(len=" + envCheck.length() + ")");
+    request.setAttribute("error", debugInfo);
 }
             request.getRequestDispatcher("/views/index.jsp").forward(request, response);
         }
