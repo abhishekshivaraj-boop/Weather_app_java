@@ -27,13 +27,13 @@ This project follows the **MVC (Model-View-Controller)** pattern using core Java
 │ Controller (Servlet) │ WeatherServlet.java
 ├─────────────────────────────┤
 │ Service Layer │ WeatherService.java
-│ (Business logic + API) │ → Calls Open-Meteo, parses JSON
+│ (Business logic + API) │ → Calls Open-Weather, parses JSON
 ├─────────────────────────────┤
 │ Model Layer (POJOs) │ WeatherData, GeoLocation, ForecastDay
 └─────────────────────────────┘
 │
 ▼
-Open-Meteo REST API
+Open-weather-map REST API
 
 ```
 
